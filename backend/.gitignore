@@ -1,0 +1,51 @@
+# 构建输出
+dist/
+build/
+coverage/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+prisma/dev.db
+prisma/migrations/*/migration_lock.toml
+
+# 环境变量
+.env
+.env.local
+.env.development
+.env.production
+
+# 日志
+logs/
+*.log
+
+# 依赖
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 临时文件
+tmp/
+temp/
+.tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 测试文件
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+__tests__/
+test/
+tests/

@@ -1,0 +1,42 @@
+# 替换为你的域名，或者用 localhost 进行本地测试
+# your-domain.com {
+#     encode gzip
+#     tls internal  # 使用自签名证书用于测试
+#     
+#     # API 请求转发到后端
+#     reverse_proxy /api/* backend:3000 {
+#         header_up Host {upstream_hostport}
+#         header_up X-Real-IP {remote}
+#         header_up X-Forwarded-For {remote}
+#         header_up X-Forwarded-Proto {scheme}
+#     }
+#     
+#     # 其他请求转发到前端
+#     reverse_proxy frontend:80 {
+#         header_up Host {upstream_hostport}
+#         header_up X-Real-IP {remote}
+#         header_up X-Forwarded-For {remote}
+#         header_up X-Forwarded-Proto {scheme}
+#     }
+# }
+
+# 本地测试配置（无 HTTPS）
+localhost {
+    encode gzip
+    
+    # API 请求转发到后端
+    reverse_proxy /api/* backend:3000 {
+        header_up Host {upstream_hostport}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+    
+    # 其他请求转发到前端
+    reverse_proxy frontend:80 {
+        header_up Host {upstream_hostport}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

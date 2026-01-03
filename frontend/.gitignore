@@ -1,0 +1,47 @@
+# 构建输出
+dist/
+build/
+coverage/
+.vite/
+
+# 依赖
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 环境变量
+.env
+.env.local
+.env.development
+.env.production
+
+# 日志
+logs/
+*.log
+
+# 临时文件
+.tmp/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 测试文件
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+__tests__/
+test/
+tests/
+
+# Tailwind CSS 输出（如果有使用tailwind编译器生成）
+css/

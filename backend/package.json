@@ -1,0 +1,29 @@
+{
+  "name": "ai-chat-backend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "user:create": "tsx src/scripts/create-user.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^9.3.0",
+    "@fastify/cors": "^8.5.0",
+    "@fastify/jwt": "^8.0.0",
+    "@prisma/client": "5.9.0",
+    "bcrypt": "^5.1.0",
+    "dotenv": "^17.2.3",
+    "fastify": "^4.26.0",
+    "fastify-plugin": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "prisma": "5.9.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,118 @@
+# 依赖和构建输出
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 构建产物
+dist/
+build/
+.next/
+out/
+.turbo/
+
+# 环境变量
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+/backend/prisma/dev.db
+/backend/data/
+
+# 日志文件
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# 运行时数据
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# 覆盖率报告
+coverage/
+*.lcov
+.nyc_output/
+
+# IDE和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统生成的文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 临时文件
+tmp/
+temp/
+.tmp/
+
+# Docker
+.docker/
+
+# 证书文件（生产环境）
+*.pem
+*.key
+*.crt
+*.cert
+
+# 前端特定
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/coverage/
+
+# 后端特定
+backend/dist/
+backend/build/
+backend/coverage/
+backend/prisma/migrations/*/migration_lock.toml
+
+# 包管理器锁定文件（可选，保留package-lock.json）
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# 测试相关
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+__tests__/
+test/
+tests/
+
+# 性能分析文件
+.nyc_output/
+lib-cov/
+
+# 缓存目录
+.cache/
+.parcel-cache/
+
+# Sentry
+.sentryclirc
+
+# 可选：保留package-lock.json但忽略其他锁定文件
+yarn.lock
+pnpm-lock.yaml
