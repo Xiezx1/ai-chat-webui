@@ -34,7 +34,7 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="mx-auto flex max-w-3xl gap-2 px-4 py-4">
+  <div class="w-full flex gap-2 px-4 py-4">
     <div class="flex-1 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
       <textarea
         ref="taRef"

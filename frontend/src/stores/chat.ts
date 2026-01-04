@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { apiFetch } from "../services/api";
 import router from "../router";
 import { useToastStore } from "./toast";
+import { useSettingsStore } from "./settings";
 
 export type Conversation = {
   id: number;
@@ -15,6 +16,11 @@ export type Message = {
   role: "user" | "assistant" | string;
   content: string;
   createdAt: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cost?: number;
+  estimated?: boolean; // 标记是否为估算值
 };
 
 type NdjsonEvent =
@@ -35,6 +41,35 @@ export const useChatStore = defineStore("chat", {
     lastUserText: "" as string,
     error: "" as string, // 用于页面底部错误条 + 重试
   }),
+
+  getters: {
+    // 获取当前对话的token统计
+    currentConversationStats() {
+      if (!this.activeId) return null;
+
+      const messages = this.messages.filter(m => m.role !== 'system');
+      const totalTokens = messages.reduce((sum, msg) => sum + (msg.totalTokens || 0), 0);
+      const totalCost = messages.reduce((sum, msg) => sum + (msg.cost || 0), 0);
+
+      return {
+        messageCount: messages.length,
+        totalTokens,
+        totalCost,
+        promptTokens: messages.reduce((sum, msg) => sum + (msg.promptTokens || 0), 0),
+        completionTokens: messages.reduce((sum, msg) => sum + (msg.completionTokens || 0), 0)
+      };
+    },
+
+    // 获取token使用百分比
+    tokenUsagePercentage() {
+      const stats = this.currentConversationStats;
+      if (!stats) return 0;
+
+      const maxTokens = 4000; // 默认上下文长度
+
+      return Math.min((stats.totalTokens / maxTokens) * 100, 100);
+    }
+  },
 
   actions: {
     async loadConversations() {
@@ -131,10 +166,13 @@ export const useChatStore = defineStore("chat", {
         timer = setTimeout(() => {
           timer = null;
           flush();
-        }, 50);
+        }, 300);
       };
 
       try {
+        const settings = useSettingsStore();
+        const model = settings.userSettings.defaultModel || "openai/gpt-4o-mini";
+
         const res = await fetch("/api/chat/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -143,7 +181,7 @@ export const useChatStore = defineStore("chat", {
           body: JSON.stringify({
             conversationId: this.activeId,
             message: t,
-            model: "openai/gpt-4o-mini",
+            model: model,
           }),
         });
 
@@ -206,6 +244,10 @@ export const useChatStore = defineStore("chat", {
         }
 
         flush();
+        if (this.activeId) {
+          const res = await apiFetch<{ messages: Message[] }>(`/api/conversations/${this.activeId}/messages`);
+          this.messages = res.messages;
+        }
       } catch (e: any) {
         if (e?.name === "AbortError") {
           this.error = "已停止生成";
@@ -215,8 +257,8 @@ export const useChatStore = defineStore("chat", {
           this.error = msg;
           toast.show(msg, "error");
 
-          // 非严格但有效：遇到未登录就回登录页
-          if (msg.includes("登录") || msg.includes("请先登录")) {
+          // 统一处理认证失效，匹配各种登录相关错误信息
+          if (msg.includes("登录") || msg.includes("请先登录") || msg.includes("登录已失效") || msg.includes("请重新登录")) {
             router.push("/login");
           }
         }

@@ -10,6 +10,8 @@ export class ApiError extends Error {
   }
 }
 
+
+
 export async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(url, {
     credentials: "include",
@@ -36,6 +38,9 @@ export async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<
     const code =
       (data as ApiErrorBody)?.error?.code ||
       "HTTP_ERROR";
+    
+    
+    
     throw new ApiError(res.status, code, msg);
   }
 

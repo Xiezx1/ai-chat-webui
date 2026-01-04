@@ -19,27 +19,44 @@ async function copyMessage() {
 <template>
   <div class="py-3">
     <div
-      class="group mx-auto flex max-w-3xl gap-3 px-4"
+      class="group w-full flex gap-3 px-4"
       :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
     >
       <div
         class="rounded-2xl px-4 py-3 text-[15px] leading-7"
-        :class="message.role === 'user'
-          ? 'bg-gray-900 text-white'
-          : 'bg-white text-gray-900 border border-gray-200'"
+        
+        :class="
+          message.role === 'user'
+            ? 'bg-gray-900 text-white'
+            : 'bg-white text-gray-900 border border-gray-200'
+        "
       >
         <div class="mb-2 flex items-center justify-between gap-3">
           <div class="text-xs text-gray-400">
-            {{ message.role === 'user' ? 'You' : 'Assistant' }}
+            {{ message.role === "user" ? "You" : "Assistant" }}
           </div>
 
-          <button
-            class="invisible rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 group-hover:visible"
-            type="button"
-            @click="copyMessage"
-          >
-            复制消息
-          </button>
+          <div class="flex items-center gap-2">
+            <!-- Token统计信息（仅对assistant消息显示） -->
+            <div
+              v-if="message.role === 'assistant' && message.totalTokens"
+              class="text-xs text-gray-500"
+            >
+              {{ message.totalTokens }} tokens
+              <span v-if="message.estimated" class="text-amber-600">(估算)</span>
+              <span v-if="message.cost" class="text-green-600"
+                >${{ message.cost.toFixed(4) }}</span
+              >
+            </div>
+
+            <button
+              class="invisible rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 group-hover:visible"
+              type="button"
+              @click="copyMessage"
+            >
+              复制消息
+            </button>
+          </div>
         </div>
 
         <div v-if="message.role === 'assistant'">

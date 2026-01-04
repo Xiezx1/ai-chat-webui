@@ -4,7 +4,9 @@ import {
     openRouterChatStream,
 } from "../providers/openrouter";
 import { toPublicError } from "../utils/errors";
-
+import { debugToken, debugDb } from "../utils/debug";
+import { estimateConversationTokens } from "../utils/tokenEstimator";
+import { estimateChatUsage } from "../utils/tokenEstimator";
 function titleFromFirstUserMessage(text: string) {
     const t = text.trim().replace(/\s+/g, " ");
     return t.length > 40 ? t.slice(0, 40) + "…" : t || "New Chat";
@@ -32,7 +34,8 @@ const routes: FastifyPluginAsync = async (app) => {
             const body = request.body as any;
             const input = String(body?.message || "").trim();
             const model = String(body?.model || "openai/gpt-4o-mini");
-            let conversationId = body?.conversationId ? Number(body.conversationId) : null;
+            let conversationId: number;
+            const providedConversationId = body?.conversationId ? Number(body.conversationId) : undefined;
 
             if (!input) {
                 return reply
@@ -40,7 +43,7 @@ const routes: FastifyPluginAsync = async (app) => {
                     .send({ error: { code: "BAD_REQUEST", message: "消息不能为空" } });
             }
 
-            if (!conversationId) {
+            if (!providedConversationId) {
                 const conv = await app.prisma.conversation.create({
                     data: { userId, title: titleFromFirstUserMessage(input) },
                     select: { id: true },
@@ -48,7 +51,7 @@ const routes: FastifyPluginAsync = async (app) => {
                 conversationId = conv.id;
             } else {
                 const conv = await app.prisma.conversation.findFirst({
-                    where: { id: conversationId, userId },
+                    where: { id: providedConversationId, userId },
                     select: { id: true },
                 });
                 if (!conv) {
@@ -56,6 +59,7 @@ const routes: FastifyPluginAsync = async (app) => {
                         .code(404)
                         .send({ error: { code: "NOT_FOUND", message: "会话不存在" } });
                 }
+                conversationId = providedConversationId;
             }
 
             const history = await app.prisma.message.findMany({
@@ -69,7 +73,7 @@ const routes: FastifyPluginAsync = async (app) => {
             });
 
             const messages = [
-                ...history.map((m) => ({ role: m.role as any, content: m.content })),
+                ...history.map((m: { role: string; content: string }) => ({ role: m.role as any, content: m.content })),
                 { role: "user" as const, content: input },
             ];
 
@@ -77,6 +81,7 @@ const routes: FastifyPluginAsync = async (app) => {
             const timeout = setTimeout(() => ac.abort(), 60_000);
 
             let answer = "";
+            let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 };
             try {
                 const r = await openRouterChatComplete({
                     model,
@@ -84,6 +89,10 @@ const routes: FastifyPluginAsync = async (app) => {
                     signal: ac.signal,
                 });
                 answer = r.content || "";
+                usage = r.usage;
+
+                // 调试：打印返回的token数据
+                debugToken("OpenRouter返回的token数据", usage, { prefix: "🔄" });
             } finally {
                 clearTimeout(timeout);
             }
@@ -94,8 +103,20 @@ const routes: FastifyPluginAsync = async (app) => {
                     role: "assistant",
                     content: answer,
                     status: "completed",
+                    promptTokens: usage.promptTokens,
+                    completionTokens: usage.completionTokens,
+                    totalTokens: usage.totalTokens,
+                    cost: usage.cost,
                 },
                 select: { id: true, role: true, content: true, createdAt: true },
+            });
+
+            // 调试：打印保存到数据库的消息数据
+            debugDb("保存到数据库的消息", {
+                promptTokens: usage.promptTokens,
+                completionTokens: usage.completionTokens,
+                totalTokens: usage.totalTokens,
+                cost: usage.cost
             });
 
             await app.prisma.conversation.update({
@@ -124,15 +145,25 @@ const routes: FastifyPluginAsync = async (app) => {
         "/stream",
         { preHandler: [app.authenticate] },
         async (request, reply) => {
-            const userId = request.user.id;
+            const userId = Number((request.user as any).id);
+            if (!Number.isFinite(userId)) {
+                return reply.code(401).send({ error: { code: "UNAUTHORIZED", message: "登录已失效，请重新登录" } });
+            }
+
+            // 关键：确认 DB 里真的存在这个 user（避免外键 500）
+            const user = await app.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+            if (!user) {
+                return reply.code(401).send({ error: { code: "UNAUTHORIZED", message: "登录已失效，请重新登录" } });
+            }
 
             try {
                 const body = request.body as any;
                 const input = String(body?.message || "").trim();
                 const model = String(body?.model || "openai/gpt-4o-mini");
-                let conversationId = body?.conversationId
+                let conversationId: number;
+                const providedConversationId = body?.conversationId
                     ? Number(body.conversationId)
-                    : null;
+                    : undefined;
 
                 if (!input) {
                     return reply
@@ -141,7 +172,7 @@ const routes: FastifyPluginAsync = async (app) => {
                 }
 
                 // 1) 确认/创建会话
-                if (!conversationId) {
+                if (!providedConversationId) {
                     const conv = await app.prisma.conversation.create({
                         data: { userId, title: titleFromFirstUserMessage(input) },
                         select: { id: true },
@@ -149,7 +180,7 @@ const routes: FastifyPluginAsync = async (app) => {
                     conversationId = conv.id;
                 } else {
                     const conv = await app.prisma.conversation.findFirst({
-                        where: { id: conversationId, userId },
+                        where: { id: providedConversationId, userId },
                         select: { id: true },
                     });
                     if (!conv) {
@@ -157,6 +188,7 @@ const routes: FastifyPluginAsync = async (app) => {
                             .code(404)
                             .send({ error: { code: "NOT_FOUND", message: "会话不存在" } });
                     }
+                    conversationId = providedConversationId;
                 }
 
                 // 2) 取历史
@@ -183,9 +215,13 @@ const routes: FastifyPluginAsync = async (app) => {
                 });
 
                 const messages = [
-                    ...history.map((m) => ({ role: m.role as any, content: m.content })),
+                    ...history.map((m: { role: string; content: string }) => ({ role: m.role as any, content: m.content })),
                     { role: "user" as const, content: input },
                 ];
+
+                // 预估算token使用量（用于流式对话）
+                const estimatedTokens = estimateConversationTokens(history, input, model);
+                debugToken("预估算token使用量", estimatedTokens);
 
                 // 5) 发起 OpenRouter 流式请求
                 const upstreamAbort = new AbortController();
@@ -324,6 +360,12 @@ const routes: FastifyPluginAsync = async (app) => {
                     const finalError =
                         finalStatus === "error" ? streamError?.message || "生成失败" : null;
 
+                    // 使用预估算的token数据更新消息
+                    const tokenData =
+                        finalStatus === "completed"
+                            ? estimateChatUsage(history, input, fullText, model)
+                            : {};
+
                     await app.prisma.message
                         .update({
                             where: { id: assistantRow.id },
@@ -331,6 +373,7 @@ const routes: FastifyPluginAsync = async (app) => {
                                 content: fullText,
                                 status: finalStatus,
                                 error: finalError,
+                                ...tokenData, // 只在完成时添加token数据
                             },
                         })
                         .catch(() => { });

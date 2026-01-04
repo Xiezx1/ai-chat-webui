@@ -186,7 +186,21 @@ const routes: FastifyPluginAsync = async (app) => {
                 const messages = await app.prisma.message.findMany({
                     where: { conversationId: id },
                     orderBy: { createdAt: "asc" },
-                    select: { id: true, role: true, content: true, createdAt: true },
+                    select: {
+                        id: true,
+                        role: true,
+                        content: true,
+                        createdAt: true,
+
+                        status: true,
+                        error: true,
+
+                        promptTokens: true,
+                        completionTokens: true,
+                        totalTokens: true,
+                        cost: true,
+                        estimated: true,
+                    },
                 });
 
                 return reply.send({ messages });

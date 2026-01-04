@@ -23,7 +23,15 @@ CREATE TABLE "Message" (
     "conversationId" INTEGER NOT NULL,
     "role" TEXT NOT NULL,
     "content" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'completed',
+    "error" TEXT,
+    "promptTokens" INTEGER,
+    "completionTokens" INTEGER,
+    "totalTokens" INTEGER,
+    "cost" REAL,
+    "estimated" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "Message_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "Conversation" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 

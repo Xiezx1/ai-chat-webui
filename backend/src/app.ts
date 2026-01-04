@@ -7,6 +7,7 @@ import authPlugin from "./plugins/auth";
 import authRoutes from "./routes/auth";
 import conversationsRoutes from "./routes/conversations";
 import chatRoutes from "./routes/chat";
+import modelsRoutes from "./routes/models";
 
 async function main() {
   const app = Fastify({ logger: true });
@@ -27,6 +28,7 @@ async function main() {
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(conversationsRoutes, { prefix: "/api/conversations" });
   await app.register(chatRoutes, { prefix: "/api/chat" });
+  await app.register(modelsRoutes, { prefix: "/api/models" });
   const port = Number(process.env.PORT || 3000);
   const host = "0.0.0.0";
 

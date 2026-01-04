@@ -39,6 +39,13 @@ model Message {
   // 新增：错误信息（可空）
   error          String?
 
+  // Token统计字段
+  promptTokens      Int?    // 提示词token数
+  completionTokens  Int?    // 回复token数
+  totalTokens       Int?    // 总token数
+  cost              Float?  // 本次调用费用(美元)
+  estimated         Boolean @default(false)  // 是否为估算值
+
   createdAt      DateTime @default(now())
   // 新增：更新时间（update content 时会自动更新）
   updatedAt      DateTime @updatedAt
