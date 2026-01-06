@@ -2,12 +2,17 @@ import { defineStore } from "pinia";
 import { apiFetch } from "../services/api";
 import router from "../router";
 import { useToastStore } from "./toast";
+import { useSettingsStore } from "./settings";
+import { useAuthStore } from "./auth";
 
 export type Conversation = {
   id: number;
   title: string;
   createdAt: string;
   updatedAt: string;
+  lastMessagePreview?: string;
+  lastMessageRole?: string;
+  lastMessageAt?: string | null;
 };
 
 export type Message = {
@@ -15,7 +20,37 @@ export type Message = {
   role: "user" | "assistant" | string;
   content: string;
   createdAt: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cost?: number;
+  estimated?: boolean; // 标记是否为估算值
 };
+
+function extractFileIdsFromText(text: string): number[] {
+  if (!text) return [];
+  const ids = new Set<number>();
+  const re = /\/api\/files\/(\d+)\/(?:raw|download)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const id = Number(m[1]);
+    if (Number.isFinite(id)) ids.add(id);
+  }
+  return Array.from(ids);
+}
+
+function stripFileMarkdownLines(text: string): string {
+  const lines = String(text || "").split("\n");
+  const kept: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // 只剔除我们自动插入的文件/图片 Markdown 行，避免把普通内容误删
+    if (/^!\[[^\]]*\]\(\/api\/files\/\d+\/(?:raw|download)\)$/.test(trimmed)) continue;
+    if (/^\[[^\]]+\]\(\/api\/files\/\d+\/(?:raw|download)\)$/.test(trimmed)) continue;
+    kept.push(line);
+  }
+  return kept.join("\n").trim();
+}
 
 type NdjsonEvent =
   | { type: "meta"; conversationId: number; assistantMessageId: number }
@@ -36,21 +71,78 @@ export const useChatStore = defineStore("chat", {
     error: "" as string, // 用于页面底部错误条 + 重试
   }),
 
+  getters: {
+    // 获取当前对话的token统计
+    currentConversationStats() {
+      if (!this.activeId) return null;
+
+      const messages = this.messages.filter(m => m.role !== 'system');
+      const totalTokens = messages.reduce((sum, msg) => sum + (msg.totalTokens || 0), 0);
+      const totalCost = messages.reduce((sum, msg) => sum + (msg.cost || 0), 0);
+
+      return {
+        messageCount: messages.length,
+        totalTokens,
+        totalCost,
+        promptTokens: messages.reduce((sum, msg) => sum + (msg.promptTokens || 0), 0),
+        completionTokens: messages.reduce((sum, msg) => sum + (msg.completionTokens || 0), 0)
+      };
+    },
+
+    // 获取token使用百分比
+    tokenUsagePercentage() {
+      const stats = this.currentConversationStats;
+      if (!stats) return 0;
+
+      const maxTokens = 4000; // 默认上下文长度
+
+      return Math.min((stats.totalTokens / maxTokens) * 100, 100);
+    }
+  },
+
   actions: {
     async loadConversations() {
-      const res = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
-      this.conversations = res.conversations;
+      const toast = useToastStore();
+      const auth = useAuthStore();
+      try {
+        const res = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
+        this.conversations = res.conversations;
+      } catch (err: any) {
+        if (err?.status === 401) {
+          auth.user = null;
+          this.conversations = [];
+          this.activeId = null;
+          this.messages = [];
+          toast.show("登录已失效，请重新登录", "error");
+          await router.push("/login");
+          return;
+        }
+        throw err;
+      }
     },
 
     async createConversation() {
-      const res = await apiFetch<{ conversation: Conversation }>("/api/conversations", {
-        method: "POST",
-        body: JSON.stringify({ title: "New Chat" }),
-      });
-      this.conversations = [res.conversation, ...this.conversations];
-      this.activeId = res.conversation.id;
-      this.messages = [];
-      return res.conversation;
+      const toast = useToastStore();
+      const auth = useAuthStore();
+      try {
+        const res = await apiFetch<{ conversation: Conversation }>("/api/conversations", {
+          method: "POST",
+          body: JSON.stringify({ title: "New Chat" }),
+        });
+        this.conversations = [res.conversation, ...this.conversations];
+        this.activeId = res.conversation.id;
+        this.messages = [];
+        return res.conversation;
+      } catch (err: any) {
+        if (err?.status === 401) {
+          auth.user = null;
+          toast.show("登录已失效，请重新登录", "error");
+          await router.push("/login");
+          return;
+        }
+        toast.show(err?.message || "新建会话失败", "error");
+        throw err;
+      }
     },
 
     async renameConversation(id: number, title: string) {
@@ -62,12 +154,21 @@ export const useChatStore = defineStore("chat", {
     },
 
     async deleteConversation(id: number) {
-      await apiFetch(`/api/conversations/${id}`, { method: "DELETE" });
+      const toast = useToastStore();
+      try {
+        await apiFetch(`/api/conversations/${id}`, { method: "DELETE" });
+      } catch (err: any) {
+        toast.show(err?.message || "删除会话失败", "error");
+        throw err;
+      }
+
       this.conversations = this.conversations.filter((c) => c.id !== id);
       if (this.activeId === id) {
         this.activeId = null;
         this.messages = [];
       }
+
+      toast.show("已删除会话", "success");
     },
 
     async openConversation(id: number) {
@@ -131,10 +232,16 @@ export const useChatStore = defineStore("chat", {
         timer = setTimeout(() => {
           timer = null;
           flush();
-        }, 50);
+        }, 300);
       };
 
       try {
+        const settings = useSettingsStore();
+        const model = settings.userSettings.defaultModel || "openai/gpt-4o-mini";
+
+        const fileIds = extractFileIdsFromText(text);
+        const prompt = stripFileMarkdownLines(text);
+
         const res = await fetch("/api/chat/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -143,7 +250,9 @@ export const useChatStore = defineStore("chat", {
           body: JSON.stringify({
             conversationId: this.activeId,
             message: t,
-            model: "openai/gpt-4o-mini",
+            prompt,
+            model: model,
+            fileIds,
           }),
         });
 
@@ -159,6 +268,14 @@ export const useChatStore = defineStore("chat", {
         const decoder = new TextDecoder();
 
         let buf = "";
+        let finished = false;
+
+        const finishNow = () => {
+          // 立刻让 UI 回到“发送”，不要依赖连接关闭
+          this.sending = false;
+          this.abortController = null;
+        };
+
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
@@ -195,17 +312,41 @@ export const useChatStore = defineStore("chat", {
               // 流内错误（后端会发），显示友好提示 + 允许重试
               flush();
               this.error = evt.error?.message || "生成失败，请重试";
-              continue;
+              finished = true;
+              finishNow();
+              break;
             }
 
             if (evt.type === "done") {
               flush();
-              continue;
+              finished = true;
+              finishNow();
+              break;
             }
+          }
+
+          if (finished) {
+            // 主动结束读取，避免连接未及时关闭导致 UI 一直处于 sending
+            reader.cancel().catch(() => {});
+            break;
           }
         }
 
         flush();
+        if (this.activeId) {
+          const res = await apiFetch<{ messages: Message[] }>(`/api/conversations/${this.activeId}/messages`);
+          this.messages = res.messages;
+
+          // 更新当前会话的摘要（避免需要刷新列表才能看到最新一句）
+          const conv = this.conversations.find((c) => c.id === this.activeId);
+          const last = this.messages[this.messages.length - 1];
+          if (conv && last) {
+            const t = String(last.content || "").replace(/\s+/g, " ").trim();
+            conv.lastMessagePreview = t.length > 80 ? t.slice(0, 80) + "…" : t;
+            conv.lastMessageRole = last.role;
+            conv.updatedAt = new Date().toISOString();
+          }
+        }
       } catch (e: any) {
         if (e?.name === "AbortError") {
           this.error = "已停止生成";
@@ -215,8 +356,8 @@ export const useChatStore = defineStore("chat", {
           this.error = msg;
           toast.show(msg, "error");
 
-          // 非严格但有效：遇到未登录就回登录页
-          if (msg.includes("登录") || msg.includes("请先登录")) {
+          // 统一处理认证失效，匹配各种登录相关错误信息
+          if (msg.includes("登录") || msg.includes("请先登录") || msg.includes("登录已失效") || msg.includes("请重新登录")) {
             router.push("/login");
           }
         }

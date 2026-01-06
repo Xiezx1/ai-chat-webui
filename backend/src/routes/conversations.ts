@@ -1,6 +1,28 @@
 import type { FastifyPluginAsync } from "fastify";
 import { toPublicError } from "../utils/errors";
 
+function stripFileMarkdownLines(text: string): string {
+    const lines = String(text || "").split("\n");
+    const kept: string[] = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (/^!\[[^\]]*\]\(\/api\/files\/\d+\/(?:raw|download)\)$/.test(trimmed)) continue;
+        if (/^\[[^\]]+\]\(\/api\/files\/\d+\/(?:raw|download)\)$/.test(trimmed)) continue;
+        kept.push(line);
+    }
+    return kept.join("\n").trim();
+}
+
+function buildPreview(text: string, maxChars = 80): string {
+    const t = stripFileMarkdownLines(text)
+        .replace(/\r\n/g, "\n")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (!t) return "";
+    if (t.length <= maxChars) return t;
+    return t.slice(0, maxChars) + "…";
+}
+
 const routes: FastifyPluginAsync = async (app) => {
     // 列表
     app.get(
@@ -22,10 +44,44 @@ const routes: FastifyPluginAsync = async (app) => {
                 const list = await app.prisma.conversation.findMany({
                     where: { userId },
                     orderBy: { updatedAt: "desc" },
-                    select: { id: true, title: true, createdAt: true, updatedAt: true },
+                    select: {
+                        id: true,
+                        title: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        messages: {
+                            orderBy: { createdAt: "desc" },
+                            take: 5,
+                            select: { role: true, content: true, createdAt: true },
+                        },
+                    },
                 });
 
-                return reply.send({ conversations: list });
+                const conversations = list.map((c: any) => {
+                    const msgs = Array.isArray(c.messages) ? c.messages : [];
+
+                    // 选择“最近一条有内容的消息”；流式中 assistant 可能是空串
+                    let picked: any = null;
+                    for (const m of msgs) {
+                        const preview = buildPreview(String(m?.content || ""));
+                        if (preview) {
+                            picked = { ...m, preview };
+                            break;
+                        }
+                    }
+
+                    return {
+                        id: c.id,
+                        title: c.title,
+                        createdAt: c.createdAt,
+                        updatedAt: c.updatedAt,
+                        lastMessagePreview: picked?.preview || "",
+                        lastMessageRole: picked?.role || "",
+                        lastMessageAt: picked?.createdAt || null,
+                    };
+                });
+
+                return reply.send({ conversations });
             } catch (err) {
                 const e = toPublicError(err);
                 return reply.code(e.statusCode).send(e.body);
@@ -82,6 +138,11 @@ const routes: FastifyPluginAsync = async (app) => {
                     return reply.code(401).send({ error: { code: "UNAUTHORIZED", message: "登录已失效，请重新登录" } });
                 }
                 const id = Number((request.params as any).id);
+                if (!Number.isFinite(id)) {
+                    return reply
+                        .code(400)
+                        .send({ error: { code: "BAD_REQUEST", message: "会话ID无效" } });
+                }
                 const body = request.body as any;
                 const title = String(body?.title || "").trim().slice(0, 80);
 
@@ -144,7 +205,8 @@ const routes: FastifyPluginAsync = async (app) => {
 
                 await app.prisma.$transaction([
                     app.prisma.message.deleteMany({ where: { conversationId: id } }),
-                    app.prisma.conversation.delete({ where: { id } }),
+                    // 这里已做过归属校验；用 deleteMany 避免并发下 delete 抛错导致前端误以为“删不掉”
+                    app.prisma.conversation.deleteMany({ where: { id, userId } }),
                 ]);
 
                 return reply.send({ ok: true });
@@ -186,7 +248,21 @@ const routes: FastifyPluginAsync = async (app) => {
                 const messages = await app.prisma.message.findMany({
                     where: { conversationId: id },
                     orderBy: { createdAt: "asc" },
-                    select: { id: true, role: true, content: true, createdAt: true },
+                    select: {
+                        id: true,
+                        role: true,
+                        content: true,
+                        createdAt: true,
+
+                        status: true,
+                        error: true,
+
+                        promptTokens: true,
+                        completionTokens: true,
+                        totalTokens: true,
+                        cost: true,
+                        estimated: true,
+                    },
                 });
 
                 return reply.send({ messages });

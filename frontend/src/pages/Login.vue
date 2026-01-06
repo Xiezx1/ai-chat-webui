@@ -1,25 +1,31 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50">
-    <div class="w-full max-w-sm bg-white border border-gray-200 rounded-xl p-6">
-      <h1 class="text-xl font-semibold mb-4">登录</h1>
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div class="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div class="mb-6">
+        <div class="text-xs font-medium text-gray-500">AI Chat</div>
+        <h1 class="mt-1 text-xl font-semibold text-gray-900">登录</h1>
+        <div class="mt-1 text-sm text-gray-500">使用你的账号开始聊天</div>
+      </div>
 
       <form @submit.prevent="onSubmit" class="space-y-3">
-        <input
-          v-model="username"
-          class="w-full border rounded-lg px-3 py-2"
-          placeholder="用户名"
-          autocomplete="username"
-        />
-        <input
-          v-model="password"
-          type="password"
-          class="w-full border rounded-lg px-3 py-2"
-          placeholder="密码"
-          autocomplete="current-password"
-        />
+        <div class="space-y-2">
+          <input
+            v-model="username"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+            placeholder="用户名"
+            autocomplete="username"
+          />
+          <input
+            v-model="password"
+            type="password"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+            placeholder="密码"
+            autocomplete="current-password"
+          />
+        </div>
 
         <button
-          class="w-full rounded-lg px-3 py-2 bg-black text-white disabled:opacity-50"
+          class="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="auth.loading"
         >
           {{ auth.loading ? "登录中..." : "登录" }}

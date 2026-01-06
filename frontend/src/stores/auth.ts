@@ -7,6 +7,7 @@ export const useAuthStore = defineStore("auth", {
   state: () => ({
     user: null as User | null,
     loading: false,
+    inited: false,
   }),
   actions: {
     async fetchMe() {
@@ -15,6 +16,8 @@ export const useAuthStore = defineStore("auth", {
         this.user = res.user;
       } catch {
         this.user = null;
+      }finally {
+        this.inited = true;
       }
     },
     async login(username: string, password: string) {

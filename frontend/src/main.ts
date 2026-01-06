@@ -5,4 +5,11 @@ import App from "./App.vue";
 
 import "./style.css";
 
-createApp(App).use(createPinia()).use(router).mount("#app");
+const app = createApp(App);
+app.use(createPinia());
+app.use(router);
+
+// 等待首次路由解析 + 守卫执行完再挂载
+router.isReady().then(() => {
+  app.mount("#app");
+});
