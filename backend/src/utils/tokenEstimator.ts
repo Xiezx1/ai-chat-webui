@@ -36,7 +36,7 @@ export function estimateChatUsage(
   model: string
 ) {
   const promptText = [...history, { role: "user", content: userMessage }]
-    .map(m => `m.role:{m.content}`)
+    .map((m) => `${m.role}:${m.content}`)
     .join("\n");
 
   const promptTokens = estimateTokens(promptText);
@@ -116,6 +116,7 @@ function calculateEstimatedCost(model: string, tokens: { promptTokens: number; c
  * 获取模型定价信息（与openrouter.ts中的相同）
  */
 function getModelPricing(modelId: string) {
+  const normalized = String(modelId || "").trim().split("@")[0].split(":")[0];
   const pricingMap: { [key: string]: { prompt: number; completion: number } } = {
     "openai/gpt-4o-mini": { prompt: 0.15, completion: 0.60 },
     "openai/gpt-4o": { prompt: 5.00, completion: 15.00 },
@@ -124,7 +125,7 @@ function getModelPricing(modelId: string) {
     "meta-llama/llama-3.1-70b-instruct": { prompt: 0.90, completion: 0.90 },
     "meta-llama/llama-3.1-8b-instruct": { prompt: 0.10, completion: 0.10 },
   };
-  return pricingMap[modelId];
+  return pricingMap[modelId] || pricingMap[normalized];
 }
 
 /**

@@ -2,13 +2,32 @@
 import { onMounted, ref, watch, nextTick, computed } from "vue";
 import { useChatStore } from "../stores/chat";
 import { useSettingsStore } from "../stores/settings";
-import { debugUi, debugToken } from "../utils/debug";
 import ChatInput from "../components/ChatInput.vue";
 import ChatMessage from "../components/ChatMessage.vue";
 
 const chat = useChatStore();
 const settings = useSettingsStore();
 const listRef = ref<HTMLDivElement | null>(null);
+
+function formatUpdatedAt(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
+const activeConversation = computed(() =>
+  chat.activeId ? chat.conversations.find((c) => c.id === chat.activeId) : null
+);
+
+function previewText(c: any) {
+  const t = String(c?.lastMessagePreview || "").trim();
+  return t || "（暂无消息）";
+}
 
 // 获取当前使用的模型信息
 const currentModel = computed(() => {
@@ -23,20 +42,9 @@ const conversationStats = computed(() => {
   
   const messages = chat.messages.filter(m => m.role !== 'system');
   
-  // 调试：打印所有消息数据
-  debugUi("前端所有消息数据", messages);
-  
   const totalTokens = messages.reduce((sum: number, msg: any) => sum + (msg.totalTokens || 0), 0);
   const totalCost = messages.reduce((sum: number, msg: any) => sum + (msg.cost || 0), 0);
   
-  // 调试：打印计算结果
-  debugToken("前端计算结果", {
-    messageCount: messages.length,
-    totalTokens,
-    totalCost,
-    promptTokens: messages.reduce((sum: number, msg: any) => sum + (msg.promptTokens || 0), 0),
-    completionTokens: messages.reduce((sum: number, msg: any) => sum + (msg.completionTokens || 0), 0)
-  });
   
   return {
     messageCount: messages.length,
@@ -101,7 +109,7 @@ async function delConv(id: number) {
   <div class="h-screen bg-gray-50">
     <div class="flex h-full">
       <!-- Sidebar -->
-      <aside class="w-72 border-r border-gray-200 bg-white">
+      <aside class="flex w-72 flex-col border-r border-gray-200 bg-white">
         <div class="flex items-center justify-between px-4 py-4">
           <div class="text-sm font-semibold text-gray-900">AI Chat</div>
           <div class="flex gap-2">
@@ -122,15 +130,23 @@ async function delConv(id: number) {
           </div>
         </div>
 
-        <div class="px-2">
+        <div class="flex-1 overflow-y-auto px-2 pb-4">
           <div
             v-for="c in chat.conversations"
             :key="c.id"
-            class="group flex items-center justify-between rounded-xl px-3 py-2 text-sm hover:bg-gray-50"
-            :class="chat.activeId === c.id ? 'bg-gray-100' : ''"
+            class="group flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors hover:bg-gray-50"
+            :class="chat.activeId === c.id ? 'bg-gray-100 ring-1 ring-gray-200' : ''"
           >
-            <button class="flex-1 truncate text-left" type="button" @click="open(c.id)">
-              {{ c.title }}
+            <button class="min-w-0 flex-1 text-left" type="button" @click="open(c.id)">
+              <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0 truncate text-sm text-gray-900">
+                  {{ c.title }}
+                </div>
+                <div class="shrink-0 text-xs text-gray-500">{{ formatUpdatedAt(c.updatedAt) }}</div>
+              </div>
+              <div class="mt-0.5 flex items-center justify-between gap-2">
+                <div class="min-w-0 truncate text-xs text-gray-600">{{ previewText(c) }}</div>
+              </div>
             </button>
 
             <div class="invisible flex gap-2 group-hover:visible">
@@ -147,65 +163,80 @@ async function delConv(id: number) {
 
       <!-- Main -->
       <main class="flex flex-1 flex-col">
-        <!-- 当前模型和Token统计显示条 -->
-        <div class="border-b border-gray-200 bg-white px-6 py-3">
-          <div class="space-y-3">
-            <!-- 模型信息 -->
-            <div class="flex items-center gap-2">
-              <div class="text-sm text-gray-600">当前模型：</div>
-              <div class="flex items-center gap-1">
-                <div class="inline-flex items-center rounded-lg bg-blue-50 px-3 py-1 text-sm font-medium text-blue-900">
-                  <div class="mr-2 h-2 w-2 rounded-full bg-blue-500"></div>
+        <!-- Sticky header: title + stats -->
+        <div class="sticky top-0 z-10 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
+          <div class="mx-auto w-full max-w-3xl space-y-2">
+            <div class="flex items-center justify-between gap-4">
+              <div class="min-w-0">
+                <div class="truncate text-sm font-semibold text-gray-900">
+                  {{ activeConversation?.title || '未选择会话' }}
+                </div>
+                <div class="mt-0.5 text-xs text-gray-500">
+                  {{ chat.sending ? '生成中…' : '就绪' }}
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <div class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700">
                   {{ currentModel.name || currentModel.id }}
                 </div>
-                <div class="text-xs text-gray-500">
-                  最大上下文: {{ currentModel.context_length?.toLocaleString() || 'N/A' }}
+                <div class="hidden text-xs text-gray-500 sm:block">
+                  上下文 {{ currentModel.context_length?.toLocaleString() || 'N/A' }}
                 </div>
               </div>
             </div>
-            
-            <!-- Token统计和进度条 -->
-            <div v-if="conversationStats" class="space-y-2">
-              <!-- 统计信息 -->
-              <div class="flex items-center justify-between text-sm text-gray-600">
-                <div class="flex items-center gap-4">
-                  <span>{{ conversationStats.messageCount }}条消息</span>
-                  <span>{{ conversationStats.totalTokens.toLocaleString() }} tokens</span>
-                  <span class="text-green-600">${{ conversationStats.totalCost }}</span>
-                  <span v-if="isUsingEstimatedTokens" class="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
-                    估算值
-                  </span>
+
+            <div v-if="conversationStats" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700">
+                  {{ conversationStats.messageCount }} 条消息
                 </div>
-                <div class="text-xs text-gray-500">
-                  {{ tokenUsagePercentage.toFixed(1) }}% / {{ (currentModel.context_length || 4000).toLocaleString() }}
+                <div class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700">
+                  {{ conversationStats.totalTokens.toLocaleString() }} tokens
+                </div>
+                <div class="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-900">
+                  ${{ conversationStats.totalCost }}
+                </div>
+                <div
+                  v-if="isUsingEstimatedTokens"
+                  class="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900"
+                >
+                  估算
                 </div>
               </div>
-              
-              <!-- 进度条 -->
-              <div class="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  class="h-2 rounded-full transition-all duration-300"
-                  :class="tokenUsagePercentage > 85 ? 'bg-red-500' : tokenUsagePercentage > 70 ? 'bg-yellow-500' : 'bg-green-500'"
-                  :style="{ width: Math.min(tokenUsagePercentage, 100) + '%' }"
-                ></div>
-              </div>
-              
-              <!-- 详细分解 -->
-              <div class="flex justify-between text-xs text-gray-500">
-                <span>输入: {{ conversationStats.promptTokens.toLocaleString() }}</span>
-                <span>输出: {{ conversationStats.completionTokens.toLocaleString() }}</span>
+
+              <div class="space-y-1">
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                  <span>占用 {{ tokenUsagePercentage.toFixed(1) }}%</span>
+                  <span>{{ (currentModel.context_length || 4000).toLocaleString() }}</span>
+                </div>
+                <div class="h-2 w-full rounded-full bg-gray-200">
+                  <div
+                    class="h-2 rounded-full transition-all duration-300"
+                    :class="tokenUsagePercentage > 85 ? 'bg-red-500' : tokenUsagePercentage > 70 ? 'bg-yellow-500' : 'bg-green-500'"
+                    :style="{ width: Math.min(tokenUsagePercentage, 100) + '%' }"
+                  ></div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-500">
+                  <span>输入 {{ conversationStats.promptTokens.toLocaleString() }}</span>
+                  <span>输出 {{ conversationStats.completionTokens.toLocaleString() }}</span>
+                </div>
               </div>
             </div>
+
+            <div v-else class="text-sm text-gray-500">开始聊天后会显示 token 统计</div>
           </div>
         </div>
 
         <!-- messages -->
-        <div ref="listRef" class="flex-1 overflow-y-auto">
-          <div v-if="!chat.activeId" class="w-full px-6 py-10 text-gray-500">
+        <div ref="listRef" class="flex-1 overflow-y-auto bg-gray-50">
+          <div v-if="!chat.activeId" class="mx-auto w-full max-w-3xl px-4 py-10 text-gray-500">
             请选择或新建一个会话开始聊天
           </div>
 
-          <ChatMessage v-for="m in chat.messages" :key="m.id" :message="m" />
+          <div class="mx-auto w-full max-w-3xl px-4 py-4">
+            <ChatMessage v-for="m in chat.messages" :key="m.id" :message="m" />
+          </div>
         </div>
 
         <!-- error + retry -->

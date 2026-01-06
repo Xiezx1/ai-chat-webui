@@ -39,8 +39,24 @@ const authRoutes: FastifyPluginAsync = async (app) => {
 
   // 当前用户
   app.get("/me", { preHandler: [app.authenticate] }, async (request, reply) => {
-    const u = request.user;
-    return reply.send({ user: u });
+    const u: any = request.user;
+    const userId = Number(u?.id);
+    if (!Number.isFinite(userId)) {
+      reply.clearCookie("token", { path: "/" });
+      return reply.code(401).send({ error: { code: "UNAUTHORIZED", message: "登录已失效，请重新登录" } });
+    }
+
+    const user = await app.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, username: true, isAdmin: true },
+    });
+
+    if (!user) {
+      reply.clearCookie("token", { path: "/" });
+      return reply.code(401).send({ error: { code: "UNAUTHORIZED", message: "登录已失效，请重新登录" } });
+    }
+
+    return reply.send({ user });
   });
 };
 

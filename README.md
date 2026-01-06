@@ -6,10 +6,52 @@
 
 ### 开发环境启动
 
+### ✅ 后端环境变量（Windows/无 Docker）
+
+后端通过 `dotenv` 自动读取“当前工作目录”的 `.env` 文件。
+本地开发建议把环境变量放在 `backend/.env`（你在 `backend` 目录里运行 `npm run dev` 时会自动生效）。
+
+在项目根目录执行（任选其一）：
+
+- PowerShell：`Copy-Item .\.env.example .\backend\.env`
+- CMD：`copy .env.example backend\.env`
+
+然后编辑 `backend/.env`，至少设置：
+
+```env
+DATABASE_URL="file:./prisma/dev.db"
+JWT_SECRET=dev-change-this-to-a-long-random-string
+OPENROUTER_API_KEY=sk-or-v1-your-openrouter-api-key-here
+COOKIE_SECURE=false
+CORS_ORIGIN=http://localhost
+
+# 可选：聊天请求超时（毫秒），默认 300000（5 分钟）。
+# 流式接口使用“静默超时”：只有在连续一段时间没有收到上游数据时才会超时；
+# 只要模型仍在持续输出（持续有数据返回），就不会因为超时中断。
+# 如果“回答生成一半就超时”，可以适当调大，比如 600000。
+# CHAT_TIMEOUT_MS=300000
+
+# 可选：上传文件大小限制（字节），默认 25MB
+# MAX_UPLOAD_BYTES=26214400
+# 可选：多模态图片总大小限制（字节），默认 8MB
+# MAX_IMAGE_BYTES=8388608
+
+# 可选：文本类附件（PDF/DOCX/TXT 等）抽取上限，用于让模型“读文件”
+# 默认会把抽取的正文以【附件内容：文件名】块追加到 prompt（超出会截断）
+# MAX_TEXT_ATTACHMENTS=5
+# MAX_TEXT_ATTACHMENT_CHARS=220000
+# MAX_TEXT_ATTACHMENT_CHARS_PER_FILE=80000
+
+# 可选：当附件内容太长被截断时，你可以在同一会话里发送“继续”，
+# 后端会按游标自动续读该附件的后半段并继续喂给模型。
+```
+
 **1. 启动后端服务**
 ```bash
 cd backend
 npm install
+npm run prisma:generate
+npm run prisma:migrate
 npm run dev
 ```
 后端将在 http://localhost:3000 启动
@@ -122,6 +164,20 @@ CORS_ORIGIN=http://localhost
 2. 获取 API Key
 3. 在 `.env` 文件中配置 `OPENROUTER_API_KEY`
 
+## 📎 文件上传与多模态图片
+
+- 输入框支持“上传任意文件”和“粘贴图片/截图”。
+- 任意文件：上传成功后会自动在输入框插入下载链接。
+- 图片文件：上传成功后会自动插入图片 Markdown；发送时会把图片以多模态（image）一并发给模型。
+- 文件访问：必须登录后才能访问（同源 Cookie 鉴权）。
+
+注意：只有支持 Vision/多模态的模型才能正确处理图片；若模型不支持，OpenRouter 可能返回错误。
+
+## 📄 文本附件续读（继续）
+
+- 当 PDF/DOCX/TXT 内容过长时，后端会按长度分段抽取并追加到 prompt（超出会显示“内容已截断”）。
+- 你可以在同一会话里直接发送：`继续`（或 `continue` / `next`），后端会从上次位置续读下一段并继续回答。
+
 ## 🚀 部署指南
 
 ### 本地开发
@@ -171,7 +227,8 @@ kill -9 <PID>
 ```bash
 cd backend
 rm -f prisma/dev.db
-npx prisma migrate reset
+# Windows PowerShell 可能禁用 npx.ps1，可用：
+./node_modules/.bin/prisma.cmd migrate reset --force
 ```
 
 **3. 依赖安装失败**
